@@ -1,0 +1,18 @@
+# Tekton pass-through at pipeline and task level
+name: passthrough-test
+
+tekton:
+  metadata:
+    labels:
+      team: backend
+    annotations:
+      quality-gate.example.com/required: "true"
+
+tasks:
+  build:
+    image: golang:1.22
+    run: go build -o app .
+    tekton:
+      podTemplate:
+        nodeSelector:
+          workload-type: ci-build

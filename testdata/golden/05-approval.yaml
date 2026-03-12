@@ -1,0 +1,66 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+    name: deploy-pipeline
+    labels:
+        app.kubernetes.io/managed-by: tkn-dsl
+spec:
+    pipelineSpec:
+        workspaces:
+            - name: shared-workspace
+        tasks:
+            - name: build
+              taskSpec:
+                workspaces:
+                    - name: shared-workspace
+                steps:
+                    - name: build
+                      image: redhat/ubi9-minimal
+                      script: |-
+                        #!/bin/sh
+                        echo building
+              workspaces:
+                - name: shared-workspace
+                  workspace: shared-workspace
+            - name: approve-deploy
+              taskRef:
+                kind: ApprovalTask
+                apiVersion: openshift-pipelines.org/v1alpha1
+              runAfter:
+                - build
+              params:
+                - name: approvers
+                  value:
+                    - alice
+                    - bob
+                    - group:platform
+                - name: numberOfApprovalsRequired
+                  value: "2"
+                - name: description
+                  value: Approve production deployment
+                - name: timeout
+                  value: 120m
+            - name: deploy
+              taskSpec:
+                workspaces:
+                    - name: shared-workspace
+                steps:
+                    - name: deploy
+                      image: redhat/ubi9-minimal
+                      script: |-
+                        #!/bin/sh
+                        echo deploying
+              runAfter:
+                - approve-deploy
+              workspaces:
+                - name: shared-workspace
+                  workspace: shared-workspace
+    workspaces:
+        - name: shared-workspace
+          volumeClaimTemplate:
+            spec:
+                accessModes:
+                    - ReadWriteOnce
+                resources:
+                    requests:
+                        storage: 1Gi

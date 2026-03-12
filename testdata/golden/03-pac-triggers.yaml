@@ -1,0 +1,55 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+    name: ci
+    labels:
+        app.kubernetes.io/managed-by: tkn-dsl
+    annotations:
+        pipelinesascode.tekton.dev/cancel-in-progress: "true"
+        pipelinesascode.tekton.dev/max-keep-runs: "5"
+        pipelinesascode.tekton.dev/on-event: '[pull_request]'
+        pipelinesascode.tekton.dev/on-path-change: '[src/**, pkg/**]'
+        pipelinesascode.tekton.dev/on-path-change-ignore: '[docs/**]'
+        pipelinesascode.tekton.dev/on-target-branch: '[main]'
+        pipelinesascode.tekton.dev/task: git-clone
+spec:
+    pipelineSpec:
+        workspaces:
+            - name: shared-workspace
+        tasks:
+            - name: clone
+              taskRef:
+                name: git-clone
+              params:
+                - name: revision
+                  value: '{{ revision }}'
+                - name: url
+                  value: '{{ repo_url }}'
+              workspaces:
+                - name: shared-workspace
+                  workspace: shared-workspace
+            - name: test
+              taskSpec:
+                workspaces:
+                    - name: shared-workspace
+                steps:
+                    - name: test
+                      image: golang:1.22
+                      script: |
+                        #!/bin/sh
+                        cd $(workspaces.shared-workspace.path)/repo
+                        go test ./...
+              runAfter:
+                - clone
+              workspaces:
+                - name: shared-workspace
+                  workspace: shared-workspace
+    workspaces:
+        - name: shared-workspace
+          volumeClaimTemplate:
+            spec:
+                accessModes:
+                    - ReadWriteOnce
+                resources:
+                    requests:
+                        storage: 1Gi

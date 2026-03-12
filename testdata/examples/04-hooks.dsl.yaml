@@ -1,0 +1,18 @@
+# Hook scripts with defaults and per-task override
+name: hooks-test
+
+defaults:
+  image: golang:1.22
+  before_run: echo "Starting task"
+  after_run: echo "Task done"
+
+tasks:
+  build:
+    run: go build -o app .
+
+  test:
+    needs: [build]
+    before_run: |
+      echo "Custom before for test"
+      go mod download
+    run: go test ./...

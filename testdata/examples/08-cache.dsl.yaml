@@ -1,0 +1,18 @@
+# Cache with multiple paths
+name: cached-build
+
+cache:
+  image: oci://registry.example.com/my-cache
+
+tasks:
+  build:
+    image: golang:1.22
+    run: |
+      cd $(workspace)/repo
+      go build -o app .
+    cache:
+      paths:
+        - path: /go/pkg/mod
+          key: ["**/go.sum"]
+        - path: /root/.cache/go-build
+          key: ["**/go.sum", "**/go.mod"]

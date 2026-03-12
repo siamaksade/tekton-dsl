@@ -1,0 +1,40 @@
+# Multi-task pipeline with dependencies, params, results, if:, finally
+name: dsl-verify-multi
+
+params:
+  greeting: "Hello"
+  target: "world"
+
+tasks:
+  generate:
+    image: redhat/ubi9-minimal
+    run: |
+      echo "Generating message..."
+      echo -n "Hello, $(params.target)!" > $(workspace)/message.txt
+    results:
+      message-file:
+        description: "Path to the generated message"
+
+  display:
+    needs: [generate]
+    image: redhat/ubi9-minimal
+    run: |
+      echo "--- Display Task ---"
+      cat $(workspace)/message.txt
+      echo ""
+      echo "Greeting param: $(params.greeting)"
+
+  skip-me:
+    needs: [generate]
+    if: params.target == 'nobody'
+    image: redhat/ubi9-minimal
+    run: echo "This should be skipped!"
+
+finally:
+  cleanup:
+    image: redhat/ubi9-minimal
+    run: |
+      echo "--- Cleanup (finally) ---"
+      echo "Pipeline complete. Cleaning up workspace."
+      rm -f $(workspace)/message.txt
+      echo "Done."

@@ -1,0 +1,99 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+    name: dsl-verify-multi
+    labels:
+        app.kubernetes.io/managed-by: tkn-dsl
+spec:
+    pipelineSpec:
+        params:
+            - name: greeting
+              type: string
+              default: Hello
+            - name: target
+              type: string
+              default: world
+        workspaces:
+            - name: shared-workspace
+        tasks:
+            - name: generate
+              taskSpec:
+                workspaces:
+                    - name: shared-workspace
+                results:
+                    - name: message-file
+                      description: Path to the generated message
+                steps:
+                    - name: generate
+                      image: redhat/ubi9-minimal
+                      script: |
+                        #!/bin/sh
+                        echo "Generating message..."
+                        echo -n "Hello, $(params.target)!" > $(workspaces.shared-workspace.path)/message.txt
+              workspaces:
+                - name: shared-workspace
+                  workspace: shared-workspace
+            - name: display
+              taskSpec:
+                workspaces:
+                    - name: shared-workspace
+                steps:
+                    - name: display
+                      image: redhat/ubi9-minimal
+                      script: |
+                        #!/bin/sh
+                        echo "--- Display Task ---"
+                        cat $(workspaces.shared-workspace.path)/message.txt
+                        echo ""
+                        echo "Greeting param: $(params.greeting)"
+              runAfter:
+                - generate
+              workspaces:
+                - name: shared-workspace
+                  workspace: shared-workspace
+            - name: skip-me
+              taskSpec:
+                workspaces:
+                    - name: shared-workspace
+                steps:
+                    - name: skip-me
+                      image: redhat/ubi9-minimal
+                      script: |-
+                        #!/bin/sh
+                        echo "This should be skipped!"
+              runAfter:
+                - generate
+              when:
+                - input: $(params.target)
+                  operator: in
+                  values:
+                    - nobody
+              workspaces:
+                - name: shared-workspace
+                  workspace: shared-workspace
+        finally:
+            - name: cleanup
+              taskSpec:
+                workspaces:
+                    - name: shared-workspace
+                steps:
+                    - name: cleanup
+                      image: redhat/ubi9-minimal
+                      script: |
+                        #!/bin/sh
+                        echo "--- Cleanup (finally) ---"
+                        echo "Pipeline complete. Cleaning up workspace."
+                        rm -f $(workspaces.shared-workspace.path)/message.txt
+                        echo "Done."
+              workspaces:
+                - name: shared-workspace
+                  workspace: shared-workspace
+    workspaces:
+        - name: shared-workspace
+          volumeClaimTemplate:
+            spec:
+                accessModes:
+                    - ReadWriteOnce
+                resources:
+                    requests:
+                        storage: 1Gi

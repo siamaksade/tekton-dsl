@@ -1,0 +1,17 @@
+# Approval gates
+name: deploy-pipeline
+
+tasks:
+  build:
+    image: redhat/ubi9-minimal
+    run: echo building
+
+  deploy:
+    needs: [build]
+    approval:
+      approvers: [alice, bob, "group:platform"]
+      required: 2
+      description: "Approve production deployment"
+      timeout: 120m
+    image: redhat/ubi9-minimal
+    run: echo deploying

@@ -1,0 +1,240 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ssadeghi/tkn-dsl/schema/v1alpha1",
+  "title": "Tekton DSL Pipeline",
+  "description": "Schema for the tkn-dsl simplified YAML DSL",
+  "type": "object",
+  "required": ["name", "tasks"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Pipeline name"
+    },
+    "on": {
+      "$ref": "#/$defs/OnTrigger"
+    },
+    "params": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "string", "description": "Shorthand: bare string = description" },
+          { "$ref": "#/$defs/Param" }
+        ]
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "tasks": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/Task" },
+      "minProperties": 1
+    },
+    "finally": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/Task" }
+    },
+    "defaults": { "$ref": "#/$defs/Defaults" },
+    "storage": { "$ref": "#/$defs/Storage" },
+    "cache": { "$ref": "#/$defs/Cache" },
+    "concurrency": {
+      "type": "object",
+      "properties": {
+        "cancel-in-progress": { "type": "boolean" }
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "properties": {
+        "max-keep-runs": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "tekton": {
+      "type": "object",
+      "description": "Pass-through fields merged into generated PipelineRun"
+    }
+  },
+  "$defs": {
+    "OnTrigger": {
+      "type": "object",
+      "properties": {
+        "pull_request": { "$ref": "#/$defs/EventFilter" },
+        "push": { "$ref": "#/$defs/EventFilter" },
+        "comment": { "type": "string" },
+        "cel": { "type": "string" }
+      }
+    },
+    "EventFilter": {
+      "type": "object",
+      "properties": {
+        "branches": { "type": "array", "items": { "type": "string" } },
+        "paths": { "type": "array", "items": { "type": "string" } },
+        "paths_ignore": { "type": "array", "items": { "type": "string" } },
+        "labels": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "Param": {
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "type": { "type": "string", "enum": ["string", "array", "object"] },
+        "default": {}
+      }
+    },
+    "Task": {
+      "type": "object",
+      "properties": {
+        "uses": { "type": "string" },
+        "image": { "type": "string" },
+        "run": { "type": "string" },
+        "steps": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Step" }
+        },
+        "needs": { "type": "array", "items": { "type": "string" } },
+        "if": { "type": "string" },
+        "params": { "type": "object" },
+        "results": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/Result" }
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "timeout": { "type": "string" },
+        "retries": { "type": "integer", "minimum": 0 },
+        "sidecars": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Sidecar" }
+        },
+        "approval": {
+          "oneOf": [
+            { "type": "array", "items": { "type": "string" } },
+            { "$ref": "#/$defs/Approval" }
+          ]
+        },
+        "workspaces": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "cache": {
+          "type": "object",
+          "properties": {
+            "path": { "type": "string" },
+            "key": { "type": "array", "items": { "type": "string" } },
+            "paths": { "type": "array", "items": { "$ref": "#/$defs/CachePath" } }
+          }
+        },
+        "before_run": { "$ref": "#/$defs/Hook" },
+        "after_run": { "$ref": "#/$defs/Hook" },
+        "resources": { "$ref": "#/$defs/Resources" },
+        "tekton": { "type": "object" }
+      }
+    },
+    "Step": {
+      "type": "object",
+      "required": ["name", "run"],
+      "properties": {
+        "name": { "type": "string" },
+        "image": { "type": "string" },
+        "run": { "type": "string" },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "resources": { "$ref": "#/$defs/Resources" },
+        "tekton": { "type": "object" }
+      }
+    },
+    "Result": {
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" }
+      }
+    },
+    "Sidecar": {
+      "type": "object",
+      "required": ["name", "image"],
+      "properties": {
+        "name": { "type": "string" },
+        "image": { "type": "string" },
+        "ports": { "type": "array", "items": { "type": "integer" } },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "Approval": {
+      "type": "object",
+      "required": ["approvers"],
+      "properties": {
+        "approvers": { "type": "array", "items": { "type": "string" } },
+        "required": { "type": "integer", "minimum": 1 },
+        "description": { "type": "string" },
+        "timeout": { "type": "string" }
+      }
+    },
+    "Defaults": {
+      "type": "object",
+      "properties": {
+        "image": { "type": "string" },
+        "before_run": { "$ref": "#/$defs/Hook" },
+        "after_run": { "$ref": "#/$defs/Hook" }
+      }
+    },
+    "Storage": {
+      "type": "object",
+      "properties": {
+        "size": { "type": "string" },
+        "storageClass": { "type": "string" }
+      }
+    },
+    "Cache": {
+      "type": "object",
+      "properties": {
+        "image": { "type": "string" },
+        "backend": { "type": "string" },
+        "credentials": { "type": "string" },
+        "insecure": { "type": "boolean" },
+        "paths": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/CachePath" }
+        },
+        "path": { "type": "string" },
+        "key": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "CachePath": {
+      "type": "object",
+      "required": ["path", "key"],
+      "properties": {
+        "path": { "type": "string" },
+        "key": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "Resources": {
+      "type": "object",
+      "properties": {
+        "cpu": { "type": "string" },
+        "memory": { "type": "string" }
+      }
+    },
+    "Hook": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "required": ["run"],
+          "properties": {
+            "image": { "type": "string" },
+            "run": { "type": "string" }
+          }
+        }
+      ]
+    }
+  }
+}

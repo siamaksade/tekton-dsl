@@ -1,0 +1,28 @@
+# PaC mode with on:, uses:, template variables
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ["src/**", "pkg/**"]
+    paths_ignore: ["docs/**"]
+
+concurrency:
+  cancel-in-progress: true
+
+cleanup:
+  max-keep-runs: 5
+
+tasks:
+  clone:
+    uses: git-clone
+    params:
+      url: $(repo_url)
+      revision: $(revision)
+
+  test:
+    needs: [clone]
+    image: golang:1.22
+    run: |
+      cd $(workspace)/repo
+      go test ./...

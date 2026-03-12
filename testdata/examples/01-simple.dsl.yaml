@@ -1,0 +1,10 @@
+# Simplest possible DSL: single task, implicit workspace
+name: dsl-verify-simple
+
+tasks:
+  hello:
+    image: redhat/ubi9-minimal
+    run: |
+      echo "Hello from the Tekton DSL!"
+      echo "Workspace is at $(workspace)"
+      ls -la $(workspace)

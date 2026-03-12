@@ -1,0 +1,35 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+    name: dsl-verify-simple
+    labels:
+        app.kubernetes.io/managed-by: tkn-dsl
+spec:
+    pipelineSpec:
+        workspaces:
+            - name: shared-workspace
+        tasks:
+            - name: hello
+              taskSpec:
+                workspaces:
+                    - name: shared-workspace
+                steps:
+                    - name: hello
+                      image: redhat/ubi9-minimal
+                      script: |
+                        #!/bin/sh
+                        echo "Hello from the Tekton DSL!"
+                        echo "Workspace is at $(workspaces.shared-workspace.path)"
+                        ls -la $(workspaces.shared-workspace.path)
+              workspaces:
+                - name: shared-workspace
+                  workspace: shared-workspace
+    workspaces:
+        - name: shared-workspace
+          volumeClaimTemplate:
+            spec:
+                accessModes:
+                    - ReadWriteOnce
+                resources:
+                    requests:
+                        storage: 1Gi

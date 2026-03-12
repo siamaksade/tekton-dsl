@@ -1,0 +1,18 @@
+# CEL expression trigger with concurrency control
+name: cel-pipeline
+
+on:
+  cel: |
+    event == "pull_request" && target_branch == "main"
+    && source_branch.matches("feat/.*")
+
+concurrency:
+  cancel-in-progress: true
+
+cleanup:
+  max-keep-runs: 3
+
+tasks:
+  build:
+    image: redhat/ubi9-minimal
+    run: echo building

@@ -1,0 +1,39 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+    name: passthrough-test
+    labels:
+        app.kubernetes.io/managed-by: tkn-dsl
+        team: backend
+    annotations:
+        quality-gate.example.com/required: "true"
+spec:
+    pipelineSpec:
+        workspaces:
+            - name: shared-workspace
+        tasks:
+            - name: build
+              taskSpec:
+                workspaces:
+                    - name: shared-workspace
+                steps:
+                    - name: build
+                      image: golang:1.22
+                      script: |-
+                        #!/bin/sh
+                        go build -o app .
+                podTemplate:
+                    nodeSelector:
+                        workload-type: ci-build
+              workspaces:
+                - name: shared-workspace
+                  workspace: shared-workspace
+    workspaces:
+        - name: shared-workspace
+          volumeClaimTemplate:
+            spec:
+                accessModes:
+                    - ReadWriteOnce
+                resources:
+                    requests:
+                        storage: 1Gi
