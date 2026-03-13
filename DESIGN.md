@@ -88,7 +88,7 @@ finally:
 | **External tasks** | `uses: git-clone` or `uses: git-clone:0.9` | Resolved via PaC resolver (Artifact Hub, HTTP, local) |
 | **Secrets** | `secrets:` top-level block | Mounted as volumes or env vars, no workspace boilerplate |
 | **Concurrency** | `concurrency:` top-level | Controls parallel runs; compiles to PaC annotation |
-| **Cache** | `cache:` top-level block | Persistent cross-run caching via tekton-caches StepActions |
+| **Cache** | `cache:` top-level (backend) + per-task `cache:` (paths) | Persistent cross-run caching via tekton-caches StepActions; works on both inline and `uses:` tasks |
 | **Manual approval** | `approval:` block on a task | Compiles to ApprovalTask custom task before gated task |
 | **Hook scripts** | `before_run:` / `after_run:` on task or in `defaults:` | String or struct form (`image:` + `run:`); injected into all tasks (including `uses:`); `after_run` runs even on failure |
 | **Retries/timeout** | `retries: 3`, `timeout: 30m` | Per-task |
@@ -595,21 +595,49 @@ finally:
 
 **Problem**: The implicit shared filesystem (`$(workspace)`) only lives for a single pipeline run. Build caches (Go module cache, `node_modules/`, Maven `.m2/`, Python `.venv/`) must be re-fetched every run, wasting time. GitLab CI solves this with a built-in `cache:` keyword. Tekton has no native caching, but the [tekton-caches](https://github.com/openshift-pipelines/tekton-caches) project provides `cache-fetch` and `cache-upload` StepActions that store/retrieve caches from OCI registries, S3, GCS, or Azure Blob Storage.
 
-**Solution**: A top-level `cache:` block in the DSL. The compiler injects `cache-fetch` and `cache-upload` StepActions into the appropriate tasks automatically — users never write StepAction references or manage cache parameters directly.
+**Solution**: A top-level `cache:` block configures the cache backend, and a per-task `cache:` block specifies which directories to cache for each task. The compiler injects `cache-fetch` and `cache-upload` StepActions into the targeted tasks automatically — users never write StepAction references or manage cache parameters directly.
 
 #### 2.6.1 DSL Syntax
 
+The cache backend is configured once at the top level. Each task that needs caching adds a `cache:` block specifying the path and key:
+
 ```yaml
 cache:
-  backend: oci://registry.example.com/cache   # shared base — one place to configure
-  paths:
-    - path: /go/pkg/mod
+  image: oci://registry.example.com/cache     # shared backend — one place to configure
+  credentials: registry-auth                   # references a secrets: entry
+
+tasks:
+  build:
+    image: golang:1.22
+    run: go build -o app .
+    cache:                                     # task-level: which directories to cache
+      path: /go/pkg/mod
       key: ["**/go.sum"]
-    - path: /root/.cache/go-build
-      key: ["**/go.sum", "**/go.mod"]
+
+  build-jar:
+    uses: maven:0.4.0                          # works on uses: tasks too
+    params:
+      GOALS: ["clean", "package"]
+    cache:
+      path: /workspace/maven-local-repo/.m2
+      key: ["**/pom.xml"]
 ```
 
-That's it. The compiler auto-generates unique, conflict-free cache URIs by combining:
+Multiple cache paths per task use the `paths:` array form:
+
+```yaml
+  build:
+    image: golang:1.22
+    run: go build -o app .
+    cache:
+      paths:
+        - path: /go/pkg/mod
+          key: ["**/go.sum"]
+        - path: /root/.cache/go-build
+          key: ["**/go.sum", "**/go.mod"]
+```
+
+The compiler auto-generates unique, conflict-free cache URIs by combining:
 - The `backend` base URL
 - The **repository identity** (`{repo-owner}/{repo-name}`, from PaC context or `--repo` flag)
 - The pipeline `name:` (from the top of the DSL file)
@@ -676,7 +704,7 @@ The compiler transforms each `cache:` entry into two injected steps per task tha
 
 The compiler also generates the PaC StepAction annotation to resolve the `cache-fetch` and `cache-upload` StepActions from the tekton-caches repository.
 
-**Which tasks get cache steps?** The compiler injects cache steps into tasks whose `run:` or `steps:` reference the cached `path`. If no specific task references the path, the cache is applied to **all inline tasks** (tasks with `run:` or `steps:`, not `uses:`).
+**Which tasks get cache steps?** The compiler injects cache steps into tasks that have a `cache:` block. This works for both inline tasks (`run:`/`steps:`) and resolved tasks (`uses:`).
 
 **Example — DSL input:**
 ```yaml
@@ -818,7 +846,7 @@ Each entry generates its own `cache-fetch` / `cache-upload` step pair. Multiple 
 | Cache URI uniqueness | Auto-generated as `{backend}/{repo-owner}/{repo-name}/{pipeline-name}/{sanitized-path}:{{hash}}` | Repo identity + pipeline name = globally unique. In phase 2 (PaC native), repo identity comes from Repository CR automatically. In phase 1 (CLI), derived from Git remote or `--repo` flag. |
 | Path sanitization | `/go/pkg/mod` → `go-pkg-mod` (strip leading `/`, replace `/` and `.` with `-`) | Produces valid OCI tags and S3 keys |
 | Where to inject steps | First/last steps of the task | Matches GitLab's model: cache is restored before work, saved after |
-| Which tasks get cache steps | Tasks that reference the cached path, or all inline tasks | Avoids caching in tasks that don't need it (e.g., `uses: git-clone`) |
+| Which tasks get cache steps | Tasks with a `cache:` block (both inline and `uses:`) | Explicit per-task opt-in; avoids caching in tasks that don't need it |
 | Skip upload if cache hit | Yes — `FETCHED` result from `cache-fetch` passed to `cache-upload` | Avoids redundant uploads, saves time and bandwidth |
 | StepAction source | Raw GitHub URL from `openshift-pipelines/tekton-caches` | PaC resolver fetches at runtime; user doesn't install StepActions manually |
 
@@ -1408,7 +1436,8 @@ tekton:
 | `$(workspace)` | Auto-generated workspace + VolumeClaimTemplate | Fully implicit |
 | `$(repo_url)`, `$(revision)`, etc. | PaC `{{ repo_url }}`, `{{ revision }}` template vars | Syntax translation |
 | `secrets:` | Workspace of type `Secret` named `secret-<alias>` | Auto-binds when task workspace name matches alias; explicit `workspaces:` override available; cache credentials auto-wired |
-| `cache:` | Injected `cache-fetch` / `cache-upload` StepAction steps | Auto-injected from tekton-caches |
+| `cache:` (top-level) | Backend config (image, credentials) | Shared across all tasks |
+| `cache:` (per-task) | Injected `cache-fetch` / `cache-upload` steps | Per-task opt-in; works on both inline and `uses:` tasks |
 | `approval:` | Injected `ApprovalTask` custom task before gated task | From manual-approval-gate |
 | `defaults:` | Applied to all tasks — inline and `uses:` (image, before_run, after_run) | Compiler merges into each task |
 | `before_run:` | Injected step before user steps (string or `{image, run}`) | Prepended to taskSpec steps; works with both inline and resolved tasks |

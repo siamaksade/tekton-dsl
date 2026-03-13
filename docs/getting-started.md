@@ -261,7 +261,7 @@ These are available as workspace volumes to tasks that need them.
 
 ### Persistent Cache
 
-Cache dependencies across pipeline runs using [tekton-caches](https://github.com/openshift-pipelines/tekton-caches):
+Cache dependencies across pipeline runs using [tekton-caches](https://github.com/openshift-pipelines/tekton-caches). Define the cache backend at the top level, then add a `cache:` block to any task that needs caching:
 
 ```yaml
 cache:
@@ -275,9 +275,29 @@ tasks:
     cache:
       path: /go/pkg/mod
       key: ["**/go.sum"]
+
+  build-jar:
+    uses: maven:0.4.0
+    params:
+      GOALS: ["clean", "package"]
+    cache:                          # works on uses: tasks too
+      path: /workspace/maven-local-repo/.m2
+      key: ["**/pom.xml"]
 ```
 
-The compiler auto-injects `cache-fetch` and `cache-upload` steps around the task.
+Any task — both inline (`run:`) and resolved (`uses:`) — can have a `cache:` block. The compiler auto-injects `cache-fetch` and `cache-upload` steps around the task's own steps. Multiple cache paths per task are also supported:
+
+```yaml
+  build:
+    image: golang:1.22
+    run: go build -o app .
+    cache:
+      paths:
+        - path: /go/pkg/mod
+          key: ["**/go.sum"]
+        - path: /root/.cache/go-build
+          key: ["**/go.sum", "**/go.mod"]
+```
 
 ### Finally (Cleanup Tasks)
 
